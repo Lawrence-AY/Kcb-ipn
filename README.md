@@ -1,25 +1,69 @@
-# Cloudflare Workers OpenAPI 3.1
+# KCB IPN Express Backend
 
-This is a Cloudflare Worker with OpenAPI 3.1 using [chanfana](https://github.com/cloudflare/chanfana) and [Hono](https://github.com/honojs/hono).
+Node.js and Express backend for receiving KCB IPN callbacks.
 
-This is an example project made to be used as a quick start into building OpenAPI compliant Workers that generates the
-`openapi.json` schema automatically from code and validates the incoming request to the defined parameters or request body.
+## Setup
 
-## Get started
+```bash
+npm install
+```
 
-1. Sign up for [Cloudflare Workers](https://workers.dev). The free tier is more than enough for most use cases.
-2. Clone this project and install dependencies with `npm install`
-3. Run `wrangler login` to login to your Cloudflare account in wrangler
-4. Run `wrangler deploy` to publish the API to Cloudflare Workers
+Add these values in `.env`:
 
-## Project structure
+```env
+PORT=3002
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+FIRESTORE_DATABASE_ID=(default)
+FIRESTORE_REGISTRATIONS_COLLECTION=registrations
+```
 
-1. Your main router is defined in `src/index.ts`.
-2. Each endpoint has its own file in `src/endpoints/`.
-3. For more information read the [chanfana documentation](https://chanfana.pages.dev/) and [Hono documentation](https://hono.dev/docs).
+## Run Locally
 
-## Development
+```bash
+npm run dev
+```
 
-1. Run `wrangler dev` to start a local instance of the API.
-2. Open `http://localhost:8787/` in your browser to see the Swagger interface where you can try the endpoints.
-3. Changes made in the `src/` folder will automatically trigger the server to reload, you only need to refresh the Swagger interface.
+For production-style local run:
+
+```bash
+npm run build
+npm start
+```
+
+## Endpoints
+
+Health check:
+
+```http
+GET http://localhost:3002/health
+```
+
+KCB IPN:
+
+```http
+POST http://localhost:3002/kcb/ipn
+Content-Type: application/json
+```
+
+Example body:
+
+```json
+{
+  "transactionReference": "KCB123456",
+  "requestId": "REQ123456",
+  "channelCode": "207",
+  "timestamp": "2026-09-04T12:00:00Z",
+  "transactionAmount": 1,
+  "currency": "KES",
+  "customerReference": "KCBTILLNO-YOURACCREF",
+  "customerName": "Test User",
+  "customerMobileNumber": "254713863322",
+  "balance": 0,
+  "narration": "school fee payment",
+  "creditAccountIdentifier": "KCBTILLNO",
+  "organizationShortCode": "",
+  "tillNumber": "KCBTILLNO"
+}
+```

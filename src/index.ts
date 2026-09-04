@@ -1,39 +1,24 @@
-export interface Env {
-  SUPABASE_URL: string
-  SUPABASE_SERVICE_KEY: string
-}
+import express, { Request, Response } from "express";
+import { env } from "./config/env";
+import { getRegistrationsCollection, serverTimestamp } from "./services/firebase";
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url)
+const app = express();
 
-    // ✅ ONLY allow POST /kcb/ipn
-    if (url.pathname === "/kcb/ipn" && request.method === "POST") {
-      return handleIPN(request, env)
-    }
+app.use(express.json({ limit: "10mb" }));
 
-    // ❌ Block everything else
-    return new Response(
-      JSON.stringify({ error: "Not allowed" }),
-      {
-        status: 405,
-        headers: { "Content-Type": "application/json" },
-      }
-    )
-  },
-}
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({
+    status: "OK",
+    service: "kcb-ipn",
+    timestamp: new Date().toISOString(),
+  });
+});
 
-// ----------------------
-// HANDLE KCB IPN
-// ----------------------
-async function handleIPN(request: Request, env: Env): Promise<Response> {
+app.post("/kcb/ipn", async (req: Request, res: Response) => {
   try {
-    // 🔒 Enforce JSON
-    if (!request.headers.get("content-type")?.includes("application/json")) {
-      return new Response("Unsupported Media Type", { status: 415 })
+    if (!req.is("application/json")) {
+      return res.status(415).send("Unsupported Media Type");
     }
-
-    const body = await request.json()
 
     const {
       transactionReference,
@@ -50,72 +35,67 @@ async function handleIPN(request: Request, env: Env): Promise<Response> {
       creditAccountIdentifier,
       organizationShortCode,
       tillNumber,
-    } = body
+    } = req.body || {};
 
-    // 🔴 Validate required fields
     if (!requestId || !transactionReference) {
-      return Response.json({
+      return res.json({
         transactionID: "N/A",
         statusCode: 1,
         statusMessage: "Invalid payload",
-      })
+      });
     }
 
-    // ----------------------
-    // SAVE TO SUPABASE
-    // ----------------------
-    const supabaseRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/registrations`,
+    await getRegistrationsCollection().doc(String(requestId)).set(
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: env.SUPABASE_SERVICE_KEY,
-          Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-          Prefer: "resolution=merge-duplicates",
-        },
-        body: JSON.stringify({
-          transaction_reference: transactionReference,
-          request_id: requestId,
-          channel_code: channelCode,
-          ipn_timestamp: timestamp,
-          transaction_amount: transactionAmount,
-          currency,
-          customer_reference: customerReference,
-          customer_name: customerName,
-          customer_mobile_number: customerMobileNumber,
-          balance,
-          narration,
-          credit_account_identifier: creditAccountIdentifier,
-          organization_shortcode: organizationShortCode,
-          till_number: tillNumber,
+        transaction_reference: transactionReference,
+        request_id: requestId,
+        channel_code: channelCode,
+        ipn_timestamp: timestamp,
+        transaction_amount: transactionAmount,
+        currency,
+        customer_reference: customerReference,
+        customer_name: customerName,
+        customer_mobile_number: customerMobileNumber,
+        balance,
+        narration,
+        credit_account_identifier: creditAccountIdentifier,
+        organization_shortcode: organizationShortCode,
+        till_number: tillNumber,
+        phone: customerMobileNumber,
+        name: customerName,
+        amount: transactionAmount,
+        invoice_number: customerReference,
+        status: "completed",
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
-          // reuse your existing schema
-          phone: customerMobileNumber,
-          name: customerName,
-          amount: transactionAmount,
-          invoice_number: customerReference,
-          status: "completed",
-        }),
-      }
-    )
+    console.log("Firebase IPN saved:", { requestId, transactionReference });
 
-    const result = await supabaseRes.text()
-    console.log("Supabase response:", result)
-
-    // ✅ ACK to KCB
-    return Response.json({
+    return res.json({
       transactionID: transactionReference,
       statusCode: 0,
       statusMessage: "Notification received",
-    })
+    });
   } catch (error) {
-    console.error(error)
+    console.error(error);
 
-    return Response.json({
+    return res.json({
       transactionID: "ERROR",
       statusCode: 1,
       statusMessage: "Server error",
-    })
+    });
   }
-}
+});
+
+app.all("*", (_req: Request, res: Response) => {
+  res.status(405).json({ error: "Not allowed" });
+});
+
+app.listen(env.PORT, () => {
+  console.log(`KCB IPN Express server running on port ${env.PORT}`);
+});
+
+export default app;
