@@ -5,7 +5,6 @@
 		"skipLibCheck": true,
 		"target": "es2022",
 		"verbatimModuleSyntax": false,
-		"allowJs": true,
 		"resolveJsonModule": true,
 		"moduleDetection": "force",
 		/* Strictness */
@@ -16,10 +15,7 @@
 		"outDir": "dist",
 		"rootDir": "src",
 		"lib": ["es2022"],
-		"types": [
-			"@types/node",
-			"node"
-		]
+		"types": ["node"]
 	},
 	"exclude": ["node_modules", "dist", "tests"],
 	"include": ["src"]
