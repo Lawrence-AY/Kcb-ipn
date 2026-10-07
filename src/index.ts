@@ -74,6 +74,33 @@ app.post("/kcb/ipn", async (req: Request, res: Response) => {
 
     console.log("Firebase IPN saved:", { requestId, transactionReference });
 
+    // Firestore is the capture/audit store; the SACCO backend owns the
+    // member transaction ledger and balances. Forward the original payload
+    // so captured payments are posted to the member account immediately.
+    if (env.SACCO_BACKEND_IPN_URL) {
+      const backendResponse = await fetch(env.SACCO_BACKEND_IPN_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(env.KCB_IPN_SHARED_SECRET ? { "x-kcb-ipn-secret": env.KCB_IPN_SHARED_SECRET } : {}),
+        },
+        body: JSON.stringify(req.body),
+      });
+      if (!backendResponse.ok) {
+        const backendMessage = await backendResponse.text().catch(() => "");
+        console.error("SACCO backend IPN reconciliation failed:", {
+          status: backendResponse.status,
+          transactionReference,
+          backendMessage,
+        });
+        return res.status(502).json({
+          transactionID: transactionReference,
+          statusCode: 1,
+          statusMessage: "IPN captured but ledger reconciliation failed; retry required",
+        });
+      }
+    }
+
     return res.json({
       transactionID: transactionReference,
       statusCode: 0,
